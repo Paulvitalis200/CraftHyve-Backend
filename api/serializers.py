@@ -34,3 +34,17 @@ class CustomTokenObtainPairSerializer(serializers.Serializer):
             'refresh': str(refresh),
             'access': str(refresh.access_token),
         }
+
+from .models import UserProfile, User
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = '__all__'
+
+class UserSerializer(serializers.ModelSerializer):
+    profile = UserProfileSerializer(source='userprofile', read_only=True)
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'is_verified', 'profile']
