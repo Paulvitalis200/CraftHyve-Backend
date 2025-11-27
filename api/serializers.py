@@ -1,17 +1,30 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
+from .models import UserProfile, User
 
 class CustomTokenObtainPairSerializer(serializers.Serializer):
     """
     Serializer for JWT token creation with verification check
     """
-    username = serializers.CharField()
+    account = serializers.CharField()
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        username = attrs.get('username')
+        account = attrs.get('account')
         password = attrs.get('password')
+
+        # Check if account is email or username
+        if '@' in account:
+            try:
+                user_obj = User.objects.get(email=account)
+                username = user_obj.username
+            except User.DoesNotExist:
+                # If email not found, we still pass the email as username to authenticate
+                # so it fails with the standard error
+                username = account
+        else:
+            username = account
 
         # Authenticate the user
         user = authenticate(username=username, password=password)
@@ -35,7 +48,7 @@ class CustomTokenObtainPairSerializer(serializers.Serializer):
             'access': str(refresh.access_token),
         }
 
-from .models import UserProfile, User
+
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
