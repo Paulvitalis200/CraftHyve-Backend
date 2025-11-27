@@ -19,6 +19,8 @@ class CustomTokenObtainPairView(APIView):
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+
 class SendVerificationEmailView(APIView):
     """
     Send verification email to user
@@ -48,13 +50,14 @@ class SendVerificationEmailView(APIView):
                 status=status.HTTP_200_OK
             )
         
-        # Generate verification token
-        token = user.generate_verification_token()
+        # Generate signed token containing the user ID
+        signer = TimestampSigner()
+        token = signer.sign(user.pk)
         
         # Create verification link
         verification_link = f"{request.scheme}://{request.get_host()}/api/verify-email/?token={token}"
         
-        # Send email (you'll need to configure email backend in settings.py)
+        # Send email
         try:
             send_mail(
                 subject='Verify your CraftHyve account',
@@ -76,7 +79,7 @@ class SendVerificationEmailView(APIView):
 
 class VerifyEmailView(APIView):
     """
-    Verify user email with token
+    Verify user email with signed token
     """
     permission_classes = []
 
@@ -89,9 +92,20 @@ class VerifyEmailView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        signer = TimestampSigner()
+        
         try:
-            user = User.objects.get(verification_token=token)
-        except User.DoesNotExist:
+            # Unsign the token to get the user ID
+            # max_age=86400 ensures the token expires after 24 hours (60*60*24)
+            user_id = signer.unsign(token, max_age=86400)
+            user = User.objects.get(pk=user_id)
+            
+        except SignatureExpired:
+            return Response(
+                {'error': 'Verification link has expired'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except (BadSignature, User.DoesNotExist):
             return Response(
                 {'error': 'Invalid verification token'}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -105,7 +119,6 @@ class VerifyEmailView(APIView):
         
         # Verify the user
         user.is_verified = True
-        user.verification_token = None  # Clear the token after verification
         user.save()
         
         return Response(
